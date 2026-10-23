@@ -29,6 +29,7 @@ c_g="\033[92m"; c_r="\033[91m"; c_y="\033[93m"; c_b="\033[1m"; c_0="\033[0m"
 ok()  { printf "${c_g}✔${c_0} $*\n"; }
 bad() { printf "${c_r}✘${c_0} $*\n"; }
 info(){ printf "${c_b}▸${c_0} $*\n"; }
+warn(){ printf "${c_y}⚠${c_0} $*\n"; }
 die() { bad "$*"; exit 2; }
 
 usage() {

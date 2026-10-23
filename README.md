@@ -194,7 +194,7 @@ nueva generación ASLR), el leak de 512 bytes en la cookie, y al aterrizar:
 ├── docker-compose.yml          # vulnerable :8081 + parcheado :8082
 ├── Makefile                    # atajos que delegan en p2s.sh
 ├── lab/
-│   ├── www/index.php           # página objetivo mínima
+│   ├── www/                    # portal NovaDocs (app realista de subida documental)
 │   ├── conf/                   # php-lab.ini (16M) + apache-lab.conf (prefork mínimo)
 │   ├── rce/                    # objetivo RCE :18081 (docroot escribible)
 │   └── vendor/php2shell-exp/   # exploit público vendido (commit fijado, gitignoreado;

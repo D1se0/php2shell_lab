@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaDocs API · nodo de carga</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{--bg:#0f1420;--panel:#161d2e;--line:#28324e;--txt:#e8ecf6;--mut:#8b95ad;--acc:#4f8cff;--ok:#3ecf8e}
+  *{margin:0;box-sizing:border-box}
+  body{font-family:ui-sans-serif,system-ui,sans-serif;background:var(--bg);color:var(--txt);
+       min-height:100vh;display:grid;place-items:center;padding:2rem}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:640px;width:100%;padding:2.2rem}
+  h1{font-size:1.35rem;display:flex;align-items:center;gap:.6rem}
+  .mark{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
+        background:linear-gradient(135deg,var(--acc),#8a63ff)}
+  p{color:var(--mut);font-size:.9rem;line-height:1.6;margin:.9rem 0 1.4rem}
+  code{background:#0c101b;border:1px solid var(--line);border-radius:7px;padding:.35rem .6rem;
+       font:600 .82rem ui-monospace,Menlo,monospace;display:inline-block;margin:.25rem 0}
+  .row{margin-bottom:.9rem}
+  .st{display:inline-block;padding:.15rem .6rem;border-radius:99px;font-size:.72rem;font-weight:700;
+      background:#3ecf8e22;color:var(--ok);border:1px solid #3ecf8e55}
+  footer{margin-top:1.6rem;border-top:1px solid var(--line);padding-top:1rem;font-size:.75rem;color:var(--mut)}
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1><span class="mark">◈</span> NovaDocs · nodo de carga</h1>
+    <p>Endpoint de ingesta del clúster documental. Esta instancia solo expone su API interna;
+       la interfaz de usuario corre en el frontal de la organización.</p>
+    <div class="row"><span class="st">OPERATIVO</span></div>
+    <div class="row"><code>GET /health.php</code> — identidad del nodo (JSON: marker, pid, versión, SAPI, memoria)</div>
+    <div class="row"><code>POST /t.php</code> — recepción multipart (RFC 1867) con cola de sellado</div>
+    <div class="row"><code>GET /t.php?mode=warm</code> — calentamiento del allocator del worker</div>
+    <footer>© 2026 NovaDocs S.L. · nodo interno · no expuesto a Internet</footer>
+  </div>
+</body>
+</html>
