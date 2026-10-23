@@ -4,7 +4,7 @@
 # ============================================================================
 CMD ?= id
 
-.PHONY: help up down status logs clean test test-vuln test-patched iocs \
+.PHONY: help up down status logs clean purge test test-vuln test-patched iocs \
         info check rce rce-canonical demo vendor
 
 help:            ; @./p2s.sh help
@@ -14,6 +14,7 @@ stop:            ; @./p2s.sh down
 status:          ; @./p2s.sh status
 logs:            ; @./p2s.sh logs
 clean:           ; @./p2s.sh clean
+purge:           ; @./p2s.sh purge
 test:            ; @./p2s.sh test all
 test-vuln:       ; @./p2s.sh test vuln
 test-patched:    ; @./p2s.sh test patched

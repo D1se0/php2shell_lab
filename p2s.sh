@@ -21,6 +21,7 @@ PATCH_CTR="php2shell-patched"
 RCE_CTR="php2shell-rce-target"
 RCE_PORT="18081"
 RCE_IMAGE="php@sha256:974e3a920309308e1690ed607e6cc3061d6906f90cc8d30fe519daa48bccf101"
+LAB_IMAGES=("php:8.5.11-apache" "php:8.5.12-apache" "$RCE_IMAGE")
 CANON_CTR="php-10961x-poc-8511"
 VENDOR="lab/vendor/php2shell-exp"
 
@@ -43,6 +44,7 @@ USO: ./p2s.sh <subcomando> [args]
     status        Estado de los contenedores y salud HTTP
     logs [CTR]    Sigue los logs (default: ambos contenedores del lab)
     clean         down + borra artefactos (pruebas del docroot, runs, caches)
+    purge         clean + ELIMINA las imágenes del lab (php:8.5.11/8.5.12 + digest)
 
   VERIFICACIÓN (sin explotar)
     test [all|vuln|patched]   Trigger + veredicto (all = contraste completo)
@@ -75,6 +77,15 @@ require_docker() { command -v docker >/dev/null 2>&1 || die "docker no está dis
 # ---------------------------------------------------------------------------
 cmd_up() {
   require_docker
+  info "Descargando las imágenes del lab si no están (php 8.5.11, 8.5.12 y build fijado)…"
+  for img in "${LAB_IMAGES[@]}"; do
+    if docker image inspect "$img" >/dev/null 2>&1; then
+      ok "imagen ya presente: $img"
+    else
+      docker pull "$img" || die "no se pudo descargar $img"
+      ok "imagen descargada: $img"
+    fi
+  done
   info "Desplegando el lab completo (compose: vulnerable :8081 + parcheado :8082)…"
   docker compose up -d || die "fallo docker compose up"
   info "Desplegando el objetivo RCE (:${RCE_PORT}, solo loopback, contenedor fresco)…"
@@ -120,6 +131,20 @@ cmd_clean() {
   rm -f lab/rce/www/o 2>/dev/null
   rm -rf "$VENDOR/runs" scripts/__pycache__ 2>/dev/null
   ok "artefactos borrados (pruebas del docroot, runs, caches)"
+}
+
+cmd_purge() {
+  cmd_clean
+  info "Eliminando las imágenes del lab (php 8.5.11, 8.5.12 y build fijado por digest)…"
+  local freed=0
+  for img in "${LAB_IMAGES[@]}"; do
+    if docker image inspect "$img" >/dev/null 2>&1; then
+      docker rmi -f "$img" >/dev/null 2>&1 && ok "imagen eliminada: $img" || warn "no se pudo eliminar $img (¿en uso por otro contenedor?)"
+    else
+      info "imagen no estaba: $img"
+    fi
+  done
+  ok "purge completo — las imágenes se re-descargarán solas en el próximo ./p2s.sh up"
 }
 
 cmd_test() {
@@ -207,6 +232,7 @@ main() {
     status|ps)     cmd_status ;;
     logs)          cmd_logs "$@" ;;
     clean)         cmd_clean ;;
+    purge)         cmd_purge ;;
     test)          cmd_test "$@" ;;
     iocs)          cmd_iocs ;;
     info)          cmd_info ;;

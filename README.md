@@ -24,7 +24,7 @@ leak, RCE e IOCs en un solo script Python).
 ```bash
 git clone https://github.com/D1se0/php2shell_lab && cd php2shell_lab
 
-./p2s.sh up                 # despliega TODO y verifica salud (automático)
+./p2s.sh up                 # descarga las imágenes si faltan, despliega TODO y verifica salud
 
 python3 php2shell.py version http://localhost:8081/   # fingerprint pasivo
 python3 php2shell.py check  http://localhost:8081/    # ¿vulnerable? VULN/NO VULN
@@ -124,6 +124,7 @@ Códigos de salida semánticos: `check` → 0 VULNERABLE / 1 NOT_VULNERABLE /
 ./p2s.sh logs        # sigue logs de ambos (./p2s.sh logs <CONTENEDOR> para uno)
 ./p2s.sh down        # detiene y ELIMINA todo (lab + RCE + lab canónico)
 ./p2s.sh clean       # down + borra artefactos (pruebas del docroot, runs, caches)
+./p2s.sh purge       # clean + ELIMINA las 3 imágenes (746 MB); up las re-descarga
 ```
 
 ### Verificación — sin explotar nada (delega en `php2shell.py`)
