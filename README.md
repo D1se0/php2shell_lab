@@ -21,7 +21,7 @@ RCE y detiene/elimina todo.
 ## TL;DR
 
 ```bash
-git clone https://github.com/TU-USUARIO/php2shell-lab && cd php2shell-lab
+git clone https://github.com/D1se0/php2shell_lab && cd php2shell_lab
 
 ./p2s.sh up                 # despliega TODO y verifica salud (automático)
 ./p2s.sh test all           # veredicto: vulnerable ✔ / parcheado ✔
