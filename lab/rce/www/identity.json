@@ -1,0 +1,6 @@
+{
+  "marker": "PHP_RFC1867_RCE_TARGET_V1",
+  "php": "8.5.11",
+  "fixed_in": "8.5.12",
+  "note": "fichero ESTATICO: el preflight del wrapper lo lee sin ejecutar PHP para no perturbar la geometria del heap que la cadena RCE espera. La identidad dinamica (pid, config) se consulta con --info (health.php)."
+}

@@ -1,0 +1,12 @@
+# exploit público vendido (se descarga con ./p2s.sh vendor; commit fijado)
+lab/vendor/
+
+# artefactos de ejecución
+lab/rce/www/o
+lab/vendor/*/
+runs/
+scripts/__pycache__/
+*.pyc
+
+# sistema
+.DS_Store

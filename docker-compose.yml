@@ -1,0 +1,48 @@
+# ============================================================================
+#  PHP2Shell Lab — CVE-2026-109618 / CVE-2026-109619
+#  ------------------------------------------------------------------------
+#  Dos contenedores identicos en configuracion, unica diferencia:
+#    * vulnerable : php:8.5.11-apache  (ultima release vulnerable de la rama 8.5)
+#    * patched    : php:8.5.12-apache  (primera release con el fix)
+#  Puerto 8081 -> vulnerable | Puerto 8082 -> patched
+#  (:18081 -> objetivo RCE, gestionado por Makefile con docker run — ver abajo)
+#
+#  USO EXCLUSIVO EN ENTORNO AISLADO DE LABORATORIO.
+# ============================================================================
+
+name: php2shell-lab
+
+x-common: &common
+  restart: "no"
+  volumes:
+    - ./lab/www:/var/www/html:ro
+    - ./lab/conf/php-lab.ini:/usr/local/etc/php/conf.d/zz-php2shell-lab.ini:ro
+    - ./lab/conf/apache-lab.conf:/etc/apache2/conf-enabled/zz-php2shell-lab.conf:ro
+  labels:
+    lab.name: "php2shell"
+    lab.authorized-use: "isolated-lab-only"
+
+services:
+  vulnerable:
+    <<: *common
+    image: php:8.5.11-apache
+    container_name: php2shell-vulnerable
+    ports:
+      - "8081:80"
+
+  patched:
+    <<: *common
+    image: php:8.5.12-apache
+    container_name: php2shell-patched
+    ports:
+      - "8082:80"
+
+  # --------------------------------------------------------------------------
+  # NOTA: el objetivo RCE (php2shell-rce-target, :18081) NO va en este compose.
+  #   La cadena RCE exige la geometría exacta de heap del build calibrado, y el
+  #   arranque vía `docker run` con contenedor fresco es el único modo verificado
+  #   como fiable (4/4) en esta máquina. Lo gestiona el Makefile:
+  #     make rce-target   # recrea el contenedor fresco (receta del autor)
+  #     make rce CMD="id" # cadena completa con reintentos
+  #   Ver EXPLOTACION.md §2 ("el build importa") y §6.
+  # --------------------------------------------------------------------------
