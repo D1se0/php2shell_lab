@@ -211,7 +211,7 @@ make rce-check             # oracle de leak sin fire
 make rce-down && make clean
 ```
 
-**Scripts propios:** `scripts/php2shell_repro.py` (trigger/control), `scripts/php2shell_rce.py` (wrapper RCE: `--info`/`--check`/`-c "cmd"`), `scripts/php2shell_iocs.py`.
+**Script unificado:** `php2shell.py` — `version` / `check` / `info` / `leak` / `rce "cmd"` / `iocs` (los tres motores en `scripts/` viven debajo, sin tocarlos).
 
 **Vendor:** `lab/vendor/php2shell-exp/` — verificable con `cd lab/vendor/php2shell-exp && sha256sum -c SOURCE-SHA256SUMS`.
 

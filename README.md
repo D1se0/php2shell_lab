@@ -87,11 +87,29 @@ fiabilidad en [`EXPLOTACION.md`](EXPLOTACION.md)):
 
 ---
 
-## El script único: `p2s.sh`
+## Los dos puntos de entrada
 
-Todo el lab se opera con **un solo script** con subcomandos (los tres scripts
-Python y el Makefile siguen existiendo como motor/atajos, pero no necesitas
-tocarlos):
+- **`p2s.sh`** — ciclo de vida del lab: `up` / `down` / `status` / `logs` / `clean` / `demo`.
+- **`php2shell.py`** — la herramienta unificada de explotación y verificación
+  (Python 3, stdlib pura): versión, check de vulnerabilidad, leak, RCE e IOCs
+  en **un solo script**. Los comandos de explotación de `p2s.sh` delegan en él.
+
+### `php2shell.py` — el exploit unificado
+
+```bash
+python3 php2shell.py version http://localhost:8081/    # fingerprint pasivo (sin trigger)
+python3 php2shell.py check  http://localhost:8081/     # trigger + veredicto (0=VULN, 1=NO VULN)
+python3 php2shell.py info                              # reconocimiento del target RCE
+python3 php2shell.py leak                              # oracle de leak SIN fire
+python3 php2shell.py rce "id"                          # cadena RCE completa (reintentos)
+python3 php2shell.py rce "id" --explain --attempts 12  # narrado y con más tiradas
+python3 php2shell.py iocs                              # IOCs para tu SIEM
+```
+
+Códigos de salida semánticos: `check` → 0 VULNERABLE / 1 NOT_VULNERABLE /
+2 INDETERMINADO; `rce` → 0 RCE logrado / 1 sin RCE en N intentos.
+
+### `p2s.sh` — ciclo de vida y secuencias
 
 ### Ciclo de vida — 100% automático
 
