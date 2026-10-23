@@ -56,6 +56,8 @@ USO: ./p2s.sh <subcomando> [args]
   EXPLOTACIÓN (RCE completo — ver EXPLOTACION.md)
     rce <cmd>     Cadena RCE remota pura: p2s.sh rce "id"  (<=14 bytes,
                   reintentos con contenedor fresco; probabilística por ASLR)
+    shell         PSEUDOSHELL interactiva: comandos sh completos (pipes, ;, ;
+                  redirecciones) con salida limpia; un fire por comando
     rce-canonical RCE canónico del autor (Chain A, determinista; sudo+gdb)
 
   EXTRAS
@@ -66,6 +68,7 @@ USO: ./p2s.sh <subcomando> [args]
 EJEMPLOS:
   ./p2s.sh up && ./p2s.sh test all && ./p2s.sh iocs
   ./p2s.sh rce "id"
+  ./p2s.sh shell
   ./p2s.sh rce-canonical
   ./p2s.sh down
 
@@ -199,6 +202,11 @@ cmd_rce() {
   python3 php2shell.py rce "$@"
 }
 
+cmd_shell() {
+  [ -f "$VENDOR/tools/php2shell_stock_poc.py" ] || cmd_vendor
+  python3 php2shell.py shell "$@"
+}
+
 cmd_rce_canonical() {
   [ -f "$VENDOR/scripts/reproduce.sh" ] || cmd_vendor
   (cd "$VENDOR" && sudo ./scripts/reproduce.sh)
@@ -239,6 +247,7 @@ main() {
     info)          cmd_info ;;
     check)         cmd_check ;;
     rce)           cmd_rce "$@" ;;
+    shell)         cmd_shell "$@" ;;
     rce-canonical|rce-reproduce) cmd_rce_canonical ;;
     demo)          cmd_demo ;;
     vendor)        cmd_vendor ;;
