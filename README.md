@@ -2,9 +2,10 @@
 
 Laboratorio Docker **totalmente automatizado** para reproducir y verificar las
 vulnerabilidades críticas de PHP conocidas como **PHP2Shell** (CVSS v4.0 **9.2**,
-RCE no autenticado), divulgadas el 21 de octubre de 2026. Un solo script
-(`p2s.sh`) despliega el lab, verifica el trigger, ejecuta la cadena completa de
-RCE y detiene/elimina todo.
+RCE no autenticado), divulgadas el 21 de octubre de 2026. **Dos puntos de
+entrada**: `p2s.sh` despliega/detiene el lab automáticamente, y `php2shell.py`
+es la herramienta unificada de explotación (versión, check de vulnerabilidad,
+leak, RCE e IOCs en un solo script Python).
 
 > ⚠️ **USO EXCLUSIVO EN ENTORNO AISLADO DE LABORATORIO.** Todo lo que levanta
 > este lab escucha **solo en loopback (127.0.0.1)**. Apuntar estas herramientas
@@ -24,10 +25,13 @@ RCE y detiene/elimina todo.
 git clone https://github.com/D1se0/php2shell_lab && cd php2shell_lab
 
 ./p2s.sh up                 # despliega TODO y verifica salud (automático)
-./p2s.sh test all           # veredicto: vulnerable ✔ / parcheado ✔
-./p2s.sh iocs               # IOCs en los logs (lo que meterías en tu SIEM)
 
-./p2s.sh rce "id"           # 💥 RCE completo por HTTP puro (verás uid=33)
+python3 php2shell.py version http://localhost:8081/   # fingerprint pasivo
+python3 php2shell.py check  http://localhost:8081/    # ¿vulnerable? VULN/NO VULN
+python3 php2shell.py rce "id"                         # 💥 RCE completo (uid=33)
+
+./p2s.sh test all           # contraste vulnerable ✔ / parcheado ✔
+./p2s.sh iocs               # IOCs en los logs (lo que meterías en tu SIEM)
 ./p2s.sh rce-canonical      # 💥 RCE canónico del autor (determinista)
 
 ./p2s.sh down               # detiene y elimina TODO (automático)
@@ -111,7 +115,7 @@ Códigos de salida semánticos: `check` → 0 VULNERABLE / 1 NOT_VULNERABLE /
 
 ### `p2s.sh` — ciclo de vida y secuencias
 
-### Ciclo de vida — 100% automático
+#### Ciclo de vida — 100% automático
 
 ```bash
 ./p2s.sh up          # despliega TODO: vulnerable :8081 + parcheado :8082
@@ -122,7 +126,7 @@ Códigos de salida semánticos: `check` → 0 VULNERABLE / 1 NOT_VULNERABLE /
 ./p2s.sh clean       # down + borra artefactos (pruebas del docroot, runs, caches)
 ```
 
-### Verificación — sin explotar nada
+### Verificación — sin explotar nada (delega en `php2shell.py`)
 
 ```bash
 ./p2s.sh test all      # contraste completo (vulnerable VULNERABLE / parcheado NOT_VULNERABLE)
@@ -131,7 +135,7 @@ Códigos de salida semánticos: `check` → 0 VULNERABLE / 1 NOT_VULNERABLE /
 ./p2s.sh iocs          # caza de IOCs en los logs (exit 0 limpio · 1 hallazgos)
 ```
 
-Flags extra del repro (se pasan tras el subcomando): `--json`, `--attempts N`,
+Flags extra (se pasan tras el subcomando): `--json`, `--attempts N`,
 `--no-color`, `--explain` (paneles didácticos fase a fase, ideal para grabar).
 
 ### Reconocimiento del target RCE
@@ -184,7 +188,8 @@ nueva generación ASLR), el leak de 512 bytes en la cookie, y al aterrizar:
 ## Estructura del repo
 
 ```text
-├── p2s.sh                      # ⭐ EL script único (up/down/test/rce/…)
+├── p2s.sh                      # ciclo de vida: up/down/status/logs/clean/demo
+├── php2shell.py                # ⭐ EL exploit unificado (version/check/info/leak/rce/iocs)
 ├── docker-compose.yml          # vulnerable :8081 + parcheado :8082
 ├── Makefile                    # atajos que delegan en p2s.sh
 ├── lab/
